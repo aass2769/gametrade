@@ -1,55 +1,41 @@
 # GameTrade
 
-게임 아이템 판매 정보를 등록하고 조회하는 PHP 연습 프로젝트다. 결제, 포인트, 채팅, 이미지 업로드는 없다. 판매자가 거래 상태를 표시하는 곳까지가 범위다.
+게임 아이템 판매 정보를 등록하고 조회하는 Laravel 연습 프로젝트다. 결제, 포인트, 채팅, 이미지 업로드는 없다. 판매자가 거래 상태를 표시하는 곳까지가 범위다.
 
 ## 개발 목적
 
-프레임워크 없이 PHP, PDO, 세션, MySQL로 목록 조회, 폼 검증, 로그인, 작성자 권한 검사를 구현한다.
+Laravel에서 요청 처리, 폼 검증, 세션 인증, Eloquent, 작성자 권한, REST API를 한 프로젝트로 보여 준다. 화면은 Blade이고, 같은 규칙은 `/api/v1`에서 Sanctum 토큰으로 동작한다.
 
 ## 기술 스택
 
 이 환경에서 확인한 버전이다.
 
 - PHP 8.5.11
-- MariaDB 13.0.2
-- PDO (`pdo_mysql`)
-- HTML, CSS
+- Laravel 13
+- MariaDB 13.0.2 (`mysql` 드라이버)
+- Blade, HTML, CSS
+- Laravel Sanctum
 
-XAMPP는 이 맥에 설치되어 있지 않다. 로컬 실행은 Homebrew MariaDB와 PHP 내장 서버를 사용했다. 세션 쿠키의 `Secure` 플래그는 로컬 HTTP라서 끄고, `HttpOnly`와 `SameSite=Lax`는 켠다.
-
-## 주요 기능
-
-- 회원가입 직후 로그인, 로그인, 로그아웃
-- 아이템 목록, 상세, 게임 필터, 아이템명 검색
-- 로그인 사용자의 상품 등록, 내 판매 상품 조회
-- 작성자의 판매 중 상품 수정·삭제
-- 판매 중, 거래 진행 중, 거래 완료 사이의 허용된 상태 변경
+XAMPP는 이 맥에 설치되어 있지 않다. 로컬 데이터베이스는 Homebrew MariaDB다. 세션은 브라우저를 닫으면 끝나며, 로컬 HTTP라서 세션 쿠키의 `Secure` 플래그는 켜지 않는다.
 
 정렬 선택, 페이지네이션, 반응형 레이아웃은 아직 없다.
 
-## 데이터베이스
-
-테이블은 `users`, `games`, `game_servers`, `items`다. 상품은 판매자와 서버를 참조하고, 게임은 서버를 통해 결정된다. 정의는 `sql/schema.sql`, 샘플 데이터는 `sql/seed.sql`이다. 자세한 관계는 `docs/database-design.md`에 있다.
-
 ## 실행 방법
 
-MariaDB를 실행한 뒤 프로젝트 루트에서 스키마와 시드를 적용한다. 접속 계정은 `SELECT`, `INSERT`, `UPDATE`, `DELETE`만 준다.
-
 ```bash
-mysql -u woomin < sql/schema.sql
-mysql -u woomin < sql/seed.sql
-cp config/config.example.php config/config.php
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan db:seed
+php artisan serve --host=127.0.0.1 --port=8080
 ```
 
-`config/config.php`의 비밀번호는 로컬에서 정한 값으로 채운다. 이 파일은 Git에 넣지 않는다. 저장소의 예시 파일에는 비밀번호가 없다.
+브라우저에서 `http://127.0.0.1:8080/` 을 연다.
 
-서버는 `public`만 문서 루트로 연다.
+`.env.example`의 DB 계정은 `gametrade_user`이고 비밀번호는 비어 있다. 로컬에서 마이그레이션을 실행할 계정은 테이블을 만들 수 있어야 한다. 애플리케이션 운영 계정은 `SELECT`, `INSERT`, `UPDATE`, `DELETE`만 주는 편이 맞다. DB 비밀번호는 `.env`에만 두고 Git에 넣지 않는다.
 
-```bash
-php -S 127.0.0.1:8080 -t public router.php
-```
-
-브라우저에서 `http://127.0.0.1:8080/` 을 연다. `router.php`는 PHP 내장 서버가 없는 주소를 `index.php`로 넘기지 않도록 404를 돌려준다.
+`APP_DEBUG`는 로컬 확인이 끝나면 `false`로 둔다. 오류 SQL은 화면에 나오지 않고 `storage/logs/laravel.log`에 남는다.
 
 샘플 계정은 로컬 확인용이다.
 
@@ -58,38 +44,21 @@ php -S 127.0.0.1:8080 -t public router.php
 | seller1 | seller1234 |
 | seller2 | seller1234 |
 
+## API
+
+기본 경로는 `/api/v1`이다. 목록과 상세, 게임 목록은 로그인 없이 볼 수 있다. 등록, 수정, 삭제, 상태 변경, 내 판매 상품은 `Authorization: Bearer` 토큰이 필요하다. 토큰은 `POST /api/v1/register` 또는 `POST /api/v1/login`으로 받는다.
+
 ## 보안 처리
 
-- SQL 값은 PDO prepared statement로만 전달한다. 정렬 파라미터는 아직 받지 않는다.
-- 비밀번호는 `password_hash()`로 저장하고 `password_verify()`로 확인한다.
-- 화면에 나가는 값은 `htmlspecialchars`로 이스케이프한다.
-- 데이터 변경 POST는 CSRF 토큰을 검사한다. 삭제와 로그아웃은 GET으로 실행되지 않는다.
-- 수정, 삭제, 상태 변경은 세션 사용자와 상품 작성자를 서버에서 비교한다. 내용 수정과 삭제는 판매 중일 때만 된다.
-- DB 오류 문구는 로그 파일에만 남긴다.
-- 웹 문서 루트는 `public/`이다. DB 비밀번호는 그 밖의 `config/config.php`에 있다.
+- 조회와 저장은 Eloquent 바인딩을 사용한다. 검색어의 `%`와 `_`는 빼서 LIKE 패턴으로 쓰이지 않게 한다.
+- 비밀번호는 `hashed` 캐스트로 저장하고 `Hash::check`로 확인한다. 없는 아이디도 같은 실패 문구를 반환한다.
+- Blade가 출력 값을 이스케이프한다.
+- 웹의 변경 요청은 CSRF 토큰을 검사한다. 로그아웃은 POST만 받는다.
+- 수정, 삭제, 상태 변경은 Policy에서 작성자를 확인하고, 내용 수정과 삭제는 판매 중일 때만 SQL 조건으로 실행한다.
+- 상태 변경은 트랜잭션과 행 잠금 안에서 현재 상태를 다시 읽는다.
 
 ## 테스트 결과
 
-2026-10-15에 `http://127.0.0.1:8080`으로 T01부터 T25, 그리고 T27을 요청과 데이터베이스 조회로 확인했고 통과했다. 화면 너비를 바꿔 보는 확인은 하지 않았다.
+2026-10-15에 PHPUnit feature 테스트 13건이 통과했다. 같은 날 `http://127.0.0.1:8080`에서 목록, 상세, 검색, 회원가입, 로그인, 권한, 상태 변경, CSRF, `/api/v1` 토큰 흐름을 HTTP로 확인했다. 브라우저에서 화면 너비를 바꿔 보는 확인은 하지 않았다.
 
-| ID | 결과 |
-| --- | --- |
-| T01–T25, T27 | 통과 |
-| T26 정렬, T28 페이지네이션, T29 좁은 화면 | 미실시 |
-
-개별 기록은 `docs/security-and-testing.md`에 있다.
-
-## 구현하면서 고려한 사항
-
-- 게임과 서버는 직접 입력받지 않고 시드 데이터에서 고르게 했다. 표기가 갈라지면 게임 필터가 나뉘기 때문이다.
-- 상품 등록보다 회원가입과 로그인을 먼저 두어, 판매자 번호가 세션에서만 나오게 했다.
-- 거래 상대와 결제가 없으므로 상태 취소 값은 만들지 않았다. 진행 표시는 판매 중으로 되돌린다.
-- 가입이 성공하면 로그인 처리 함수를 그대로 호출한다. 세션 ID 재발급은 그 함수 안에만 있다.
-
-## 이후 개선
-
-- 최신순, 가격 낮은 순, 가격 높은 순 정렬
-- 페이지네이션
-- 좁은 화면에서 목록이 읽히게 하는 CSS
-
-결제, 이메일 인증, 이미지 업로드, 채팅은 이번 범위 밖이다.
+정렬, 페이지네이션, 좁은 화면은 아직 구현하지 않았다.
