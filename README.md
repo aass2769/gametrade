@@ -12,19 +12,22 @@ Laravel에서 요청 처리, 폼 검증, 세션 인증, Eloquent, 작성자 권�
 
 - PHP 8.5.11
 - Laravel 13
-- MariaDB 13.0.2 (`mysql` 드라이버)
+- MySQL 8.4 (Docker, `mysql` 드라이버)
 - Blade, HTML, CSS
 - Laravel Sanctum
 
-XAMPP는 이 맥에 설치되어 있지 않다. 로컬 데이터베이스는 Homebrew MariaDB다. 세션은 브라우저를 닫으면 끝나며, 로컬 HTTP라서 세션 쿠키의 `Secure` 플래그는 켜지 않는다.
+데이터베이스는 이 저장소의 `docker-compose.yml`이 띄우는 MySQL 컨테이너다. 세션은 브라우저를 닫으면 끝나며, 로컬 HTTP라서 세션 쿠키의 `Secure` 플래그는 켜지 않는다.
 
 정렬 선택, 페이지네이션, 반응형 레이아웃은 아직 없다.
 
 ## 실행 방법
 
+Docker가 실행 중이어야 한다. 맥의 3306번 포트를 다른 데이터베이스가 쓰고 있으면 컨테이너가 켜지지 않는다.
+
 ```bash
 composer install
 cp .env.example .env
+docker compose up -d
 php artisan key:generate
 php artisan migrate
 php artisan db:seed
@@ -33,7 +36,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 
 브라우저에서 `http://127.0.0.1:8080/` 을 연다.
 
-`.env.example`의 DB 계정은 `gametrade_user`이고 비밀번호는 비어 있다. 로컬에서 마이그레이션을 실행할 계정은 테이블을 만들 수 있어야 한다. 애플리케이션 운영 계정은 `SELECT`, `INSERT`, `UPDATE`, `DELETE`만 주는 편이 맞다. DB 비밀번호는 `.env`에만 두고 Git에 넣지 않는다.
+컨테이너가 처음 켜질 때 `gametrade` 데이터베이스를 만든다. Laravel과 DBeaver는 `127.0.0.1:3306`으로 접속한다. 계정은 `gametrade`, 비밀번호는 `gametrade`다. 루트 비밀번호는 `gametrade-root`다. 이 값들은 로컬 연습용이며 `.env`에 있다. `.env`는 Git에 넣지 않는다.
 
 `APP_DEBUG`는 로컬 확인이 끝나면 `false`로 둔다. 오류 SQL은 화면에 나오지 않고 `storage/logs/laravel.log`에 남는다.
 
