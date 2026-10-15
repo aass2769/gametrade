@@ -25,8 +25,7 @@ class ItemController extends Controller
         $items = Item::query()
             ->with(['server.game', 'seller'])
             ->filtered($filters->gameId, $filters->name)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
+            ->ordered($filters->sort)
             ->get();
 
         return ItemResource::collection($items);

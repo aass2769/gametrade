@@ -53,6 +53,15 @@ class Item extends Model
             });
     }
 
+    public function scopeOrdered(Builder $query, string $sort): Builder
+    {
+        return match ($sort) {
+            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
+            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
+            default => $query->orderByDesc('created_at')->orderByDesc('id'),
+        };
+    }
+
     public function revise(array $data): bool
     {
         $updated = $this->newQuery()

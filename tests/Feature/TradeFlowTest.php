@@ -63,6 +63,36 @@ class TradeFlowTest extends TestCase
             ->assertDontSee('빛나는 포션');
     }
 
+    public function test_list_sort_accepts_only_the_allowed_orders(): void
+    {
+        [, $server, $seller] = $this->catalog();
+        $expensive = $this->listing($seller, $server, '비싼 검', 30000);
+        $cheap = $this->listing($seller, $server, '싼 포션', 10000);
+        $middle = $this->listing($seller, $server, '중간 방패', 20000);
+        $expensive->forceFill(['created_at' => '2026-01-01 00:00:00'])->save();
+        $cheap->forceFill(['created_at' => '2026-01-02 00:00:00'])->save();
+        $middle->forceFill(['created_at' => '2026-01-03 00:00:00'])->save();
+
+        $this->get('/?sort=latest')
+            ->assertOk()
+            ->assertSee('최신순')
+            ->assertSee('가격 낮은 순')
+            ->assertSee('가격 높은 순')
+            ->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
+        $this->get('/?sort=price_asc')->assertOk()->assertSeeInOrder(['싼 포션', '중간 방패', '비싼 검']);
+        $this->get('/?sort=price_desc')->assertOk()->assertSeeInOrder(['비싼 검', '중간 방패', '싼 포션']);
+        $this->get('/?'.http_build_query(['sort' => 'name;drop']))
+            ->assertOk()
+            ->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
+        $this->get('/')->assertOk()->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
+
+        $this->getJson('/api/v1/items?sort=price_asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.item_name', '싼 포션')
+            ->assertJsonPath('data.1.item_name', '중간 방패')
+            ->assertJsonPath('data.2.item_name', '비싼 검');
+    }
+
     public function test_register_logs_in_and_rejects_duplicate_username(): void
     {
         $this->post('/register', [

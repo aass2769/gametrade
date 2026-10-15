@@ -18,6 +18,14 @@
             아이템명
             <input type="text" name="q" maxlength="100" value="{{ $filters->rawQuery }}">
         </label>
+        <label>
+            정렬
+            <select name="sort">
+                @foreach (\App\Http\ItemFilters::SORTS as $value => $label)
+                    <option value="{{ $value }}" @selected($filters->sort === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </label>
         <button type="submit">검색</button>
     </form>
     @if ($filters->error)
