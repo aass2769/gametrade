@@ -1,18 +1,18 @@
 # GameTrade 요구사항 명세서
 
-상태: 설계안 (구현 전)  
-기준일: 2026-10-14
+상태: Laravel 구현 기준  
+기준일: 2026-10-15
 
-이 문서는 구현의 기준이다. 관련 문서는 다음 순서로 읽는다.
+이 문서는 구현된 기능의 기준이다. 관련 문서는 다음 순서로 읽는다.
 
 1. `docs/requirements.md` — 무엇을 만드는가
 2. `docs/database-design.md` — 데이터를 어떻게 저장하는가
-3. `docs/architecture.md` — PHP 파일을 어떻게 나누는가
+3. `docs/architecture.md` — Laravel 파일을 어떻게 나누는가
 4. `docs/feature-flows.md` — 요청이 어떻게 처리되는가
 5. `docs/security-and-testing.md` — 보안과 테스트
-6. `docs/development-plan.md` — 구현 순서와 README 계획
+6. `docs/development-plan.md` — 구현된 범위와 남은 P1
 
-소스 코드, 스키마 파일, README는 이 설계를 검토한 뒤에 만든다.
+실행 방법은 `README.md`다. 테이블은 `database/migrations`, 샘플 데이터는 `database/seeders/SampleDataSeeder.php`가 만든다.
 
 ## 1. 프로젝트 개요
 
@@ -32,15 +32,15 @@ Laravel과 MySQL로 요청 처리, 폼 검증, 세션 인증, Eloquent, 권한 �
 | --- | --- |
 | 운영체제 | macOS |
 | IDE | Cursor |
-| 언어 | PHP (XAMPP에 포함된 버전, 8.1 이상을 전제) |
-| 데이터베이스 | XAMPP의 MariaDB. SQL은 MySQL 8과 MariaDB 10.4 이상에서 동작하는 범위로 작성 |
-| 웹 서버 | Apache |
-| 로컬 환경 | XAMPP |
-| 프론트엔드 | HTML, CSS. 핵심 기능은 JavaScript 없이 동작 |
-| DB 접근 | PDO |
+| 언어 | PHP 8.5 |
+| 프레임워크 | Laravel 13 |
+| 데이터베이스 | Docker의 MySQL 8.4. 애플리케이션은 `mysql` 드라이버로 접속 |
+| 웹 서버 | 로컬은 `php artisan serve`. 입구는 `public/index.php` |
+| 프론트엔드 | Blade, HTML, CSS. 핵심 기능은 JavaScript 없이 동작 |
+| API | Laravel Sanctum. 화면과 같은 규칙을 `/api/v1`에서 JSON으로 제공 |
 | 버전 관리 | Git |
 
-PHP 버전은 구현 1단계에서 `php -v`로 확인하고, 8.1 미만이면 그 사실을 README에 적는다. `password_hash()`, `password_verify()`는 이 범위에서 사용한다.
+비밀번호는 Laravel의 `hashed` 캐스트로 저장한다. 평문은 저장하지 않는다.
 
 ### 1.3 사용자 역할
 
@@ -60,7 +60,7 @@ PHP 버전은 구현 1단계에서 `php -v`로 확인하고, 8.1 미만이면 �
 ### 2.1 이번 프로젝트에 포함
 
 - 회원가입, 로그인, 로그아웃, 세션 유지
-- 비밀번호는 `password_hash()` 결과만 저장
+- 비밀번호는 해시만 저장. 컬럼은 `users.password`
 - 아이템 목록, 상세, 아이템명 검색, 게임별 필터
 - 로그인 회원의 아이템 등록, 본인 상품 수정·삭제
 - 판매 중, 거래 진행 중, 거래 완료 상태와 허용된 전환
@@ -104,8 +104,8 @@ PHP 버전은 구현 1단계에서 `php -v`로 확인하고, 8.1 미만이면 �
 - 가입 전에 형식을 검사한다.
 - 같은 아이디가 있으면 가입시키지 않고, "이미 사용 중인 아이디입니다."를 보여 준다.
 - 동시 가입은 DB의 UNIQUE 제약이 최종 판단이다. 중복 키 오류도 같은 메시지로 바꾼다.
-- 비밀번호는 `password_hash($password, PASSWORD_DEFAULT)` 결과만 `users.password_hash`에 저장한다.
-- 가입 성공 시 로그인 처리 함수로 세션을 만들고 목록으로 이동한다. 플래시 메시지는 "가입했습니다."다. 세션 ID 재발급은 로그인 함수 안에서만 한다.
+- 비밀번호는 해시만 `users.password`에 저장한다. 평문 컬럼은 없다.
+- 가입 성공 시 로그인과 같은 경로로 세션을 만들고 목록으로 이동한다. 플래시 메시지는 "가입했습니다."다. 세션 ID 재발급은 그 로그인 처리 안에서만 한다.
 
 완료 조건:
 
@@ -130,7 +130,7 @@ PHP 버전은 구현 1단계에서 `php -v`로 확인하고, 8.1 미만이면 �
 
 #### F-AUTH-04 로그인 상태 유지
 
-기본 해석은 "사이트를 이동하는 동안 다시 로그인하지 않아도 된다"이다. PHP 세션 쿠키를 사용하고, 브라우저를 닫으면 끝나는 세션으로 둔다. 자동 로그인(remember me)과 장기 쿠키는 만들지 않는다. 해석이 다를 수 있으므로 Q6에 남긴다.
+기본 해석은 "사이트를 이동하는 동안 다시 로그인하지 않아도 된다"이다. Laravel 세션 쿠키를 사용하고, `SESSION_EXPIRE_ON_CLOSE=true`라서 브라우저를 닫으면 끝난다. 자동 로그인(remember me)과 장기 쿠키는 만들지 않는다.
 
 헤더는 세션이 있으면 아이디, 아이템 등록, 로그아웃을 보여 준다. 세션이 없으면 로그인, 회원가입을 보여 준다.
 
@@ -138,7 +138,7 @@ PHP 버전은 구현 1단계에서 `php -v`로 확인하고, 8.1 미만이면 �
 
 #### F-ITEM-01 전체 목록
 
-`GET /index.php`는 등록된 상품을 보여 준다. 판매 중만이 아니라 거래 진행 중, 거래 완료도 포함한다. 상태 필터는 요구사항에 없으므로 만들지 않는다.
+`GET /`는 등록된 상품을 보여 준다. 판매 중만이 아니라 거래 진행 중, 거래 완료도 포함한다. 상태 필터는 요구사항에 없으므로 만들지 않는다.
 
 각 행에 보일 항목:
 
@@ -156,7 +156,7 @@ P0의 정렬은 `created_at DESC, id DESC`로 고정한다. 사용자가 고르�
 
 #### F-ITEM-02 상세 조회
 
-`GET /item.php?id={id}`는 목록 항목에 더해 다음을 보여 준다.
+`GET /items/{id}`는 목록 항목에 더해 다음을 보여 준다.
 
 - 아이템 설명 (없으면 "설명이 없습니다.")
 - 판매자 아이디
@@ -216,7 +216,7 @@ P0에서는 페이지네이션 없이 조건에 맞는 행을 모두 보여 준�
 
 #### F-ITEM-06 등록
 
-로그인한 사용자만 `GET /item-create.php` 폼을 열고 `POST /item-create.php`로 저장한다.
+로그인한 사용자만 `GET /items/create` 폼을 열고 `POST /items`로 저장한다.
 
 | 입력 | 저장 위치 | 규칙 |
 | --- | --- | --- |
@@ -240,7 +240,7 @@ P0에서는 페이지네이션 없이 조건에 맞는 행을 모두 보여 준�
 
 #### F-ITEM-07 수정
 
-- 작성자만 `GET /item-edit.php?id={id}`와 `POST /item-edit.php`를 사용할 수 있다.
+- 작성자만 `GET /items/{id}/edit`와 `PUT /items/{id}`를 사용할 수 있다. 화면 폼은 `_method`로 PUT을 보낸다.
 - 수정 가능한 필드는 등록 필드와 같다. 판매자(`user_id`)와 등록 일시는 바꾸지 못한다.
 - 상태 변경은 이 폼에서 하지 않는다. F-ITEM-08에서 한다.
 - 기본안: 내용 수정은 상태가 `ON_SALE`일 때만 된다. Q3.
@@ -257,8 +257,8 @@ P0에서는 페이지네이션 없이 조건에 맞는 행을 모두 보여 준�
 #### F-ITEM-08 삭제
 
 - 작성자만 삭제할 수 있다.
-- `GET /item-delete.php?id={id}`는 확인 화면만 보여 준다. 이 요청으로 DELETE를 실행하지 않는다.
-- `POST /item-delete.php`만 행을 삭제한다.
+- `GET /items/{id}/delete`는 확인 화면만 보여 준다. 이 요청으로 DELETE를 실행하지 않는다.
+- `DELETE /items/{id}`만 행을 삭제한다. 화면 폼은 `_method`로 DELETE를 보낸다.
 - 기본안: `ON_SALE`일 때만 삭제한다. Q3.
 - 성공하면 목록으로 이동하고 "상품을 삭제했습니다."를 보여 준다.
 - 물리 삭제다. 삭제 이력 테이블은 두지 않는다.
@@ -304,7 +304,7 @@ P0에서는 페이지네이션 없이 조건에 맞는 행을 모두 보여 준�
 
 #### F-ITEM-12 내 판매 상품
 
-로그인한 사용자가 `GET /my-items.php`에서 자신의 상품만 본다.
+로그인한 사용자가 `GET /my/items`에서 자신의 상품만 본다.
 
 - 조건은 `items.user_id = 세션 사용자 id`
 - 정렬은 `created_at DESC, id DESC`
@@ -320,13 +320,13 @@ P0에서는 페이지네이션 없이 조건에 맞는 행을 모두 보여 준�
 
 - 화면 문구는 한국어로 작성한다.
 - 문자 집합은 UTF-8, DB는 `utf8mb4`다.
-- 데이터 변경은 POST와 CSRF 검사 후에만 한다.
-- SQL 값은 PDO prepared statement로 바인딩한다.
-- HTML로 출력하는 모든 동적 문자열은 이스케이프한다.
-- 사용자에게 DB 오류 문구, 스택 트레이스, 파일 경로, SQL을 보여 주지 않는다.
-- 접속 정보는 웹 문서 루트 밖의 설정 파일에 둔다.
+- 데이터 변경은 POST, PUT, DELETE와 CSRF 검사 후에만 한다. 웹에서 CSRF가 없으면 HTTP 419다.
+- SQL 값은 Eloquent 바인딩으로 넘긴다. 요청 문자열을 쿼리에 이어 붙이지 않는다.
+- HTML로 출력하는 모든 동적 문자열은 Blade의 `{{ }}`로 이스케이프한다.
+- 사용자에게 DB 오류 문구, 스택 트레이스, 파일 경로, SQL을 보여 주지 않는다. 로컬도 `APP_DEBUG=false`다.
+- 접속 정보는 Git에 넣지 않는 `.env`에 둔다. 예시는 `.env.example`이다.
 - 핵심 흐름은 서버가 HTML을 렌더링한다. 목록, 등록, 수정, 삭제, 로그인에 JavaScript를 필수로 두지 않는다.
-- 동시 수정 잠금은 두지 않는다. 한 상품을 고칠 수 있는 사람은 판매자 한 명이고, 상태 변경 SQL이 현재 상태를 조건으로 사용한다.
+- 내용 수정은 판매자 한 명만 할 수 있다. 상태 변경은 트랜잭션 안에서 그 행을 잠그고, 잠근 뒤의 현재 상태가 허용 표에 있을 때만 저장한다.
 
 ## 5. 기능 목록과 우선순위
 
@@ -373,13 +373,13 @@ P0 완료와 P0 테스트가 통과한 뒤에 구현한다.
 
 | 기능 | 우선순위 | 화면 | 주요 테이블 |
 | --- | --- | --- | --- |
-| 회원가입 / 로그인 / 로그아웃 | P0 | `register.php`, `login.php`, 헤더 로그아웃 폼 | `users` |
-| 목록 / 상세 | P0 | `index.php`, `item.php` | `items`, `game_servers`, `games`, `users` |
-| 검색 / 게임 필터 | P0 | `index.php` | 위와 같음 |
-| 등록 / 수정 / 삭제 | P0 | `item-create.php`, `item-edit.php`, `item-delete.php` | `items` |
-| 상태 변경 | P0 | `item.php`의 POST 폼, 처리 스크립트 `item-status.php` | `items` |
-| 정렬 / 페이지네이션 | P1 | `index.php` | `items` |
-| 내 판매 상품 | P0 | `my-items.php` | `items` |
+| 회원가입 / 로그인 / 로그아웃 | P0 | `GET/POST /register`, `GET/POST /login`, `POST /logout` | `users` |
+| 목록 / 상세 | P0 | `GET /`, `GET /items/{id}` | `items`, `game_servers`, `games`, `users` |
+| 검색 / 게임 필터 | P0 | `GET /?game_id=&q=` | 위와 같음 |
+| 등록 / 수정 / 삭제 | P0 | `GET /items/create`, `POST /items`, `GET/PUT /items/{id}/edit`와 `PUT /items/{id}`, `GET /items/{id}/delete`, `DELETE /items/{id}` | `items` |
+| 상태 변경 | P0 | 상세의 폼, `POST /items/{id}/status` | `items` |
+| 정렬 / 페이지네이션 | P1 | `GET /` | `items` |
+| 내 판매 상품 | P0 | `GET /my/items` | `items` |
 
 ## 6. 확정된 결정
 
@@ -423,7 +423,7 @@ P0 완료와 P0 테스트가 통과한 뒤에 구현한다.
 - `games`, `game_servers` 테이블을 두고 시드 데이터로 게임을 넣는다.
 - 등록 화면은 서버를 `게임명 - 서버명`으로 고르는 `<select>`다. 저장값은 `server_id` 하나다. 게임은 서버의 부모로 결정된다.
 - 필터는 `games.id`로 한다.
-- 사용자는 시드에 없는 게임을 그 자리에서 추가할 수 없다. 게임을 늘릴 때는 시드 SQL을 수정한다.
+- 사용자는 시드에 없는 게임을 그 자리에서 추가할 수 없다. 게임을 늘릴 때는 `SampleDataSeeder`를 수정한다.
 
 선택지 B:
 
@@ -441,9 +441,9 @@ P0 완료와 P0 테스트가 통과한 뒤에 구현한다.
 | Q3 | 수정·삭제 가능 상태 | `ON_SALE`에서만 내용 수정과 삭제를 허용한다. `IN_PROGRESS`는 상태 전환만 된다. `COMPLETED`는 조회만 된다 |
 | Q4 | 내 판매 목록 | 페이지네이션 없는 최소 목록을 P0에 포함한다 |
 | Q5 | 구현 순서 | 공개 조회 다음에 회원가입·로그인을 만들고, 그 다음 상품 등록을 만든다 |
-| Q6 | 로그인 유지 | 브라우저를 닫기 전까지의 PHP 세션. 장기 자동 로그인 쿠키는 없다 |
+| Q6 | 로그인 유지 | 브라우저를 닫기 전까지의 Laravel 세션. 장기 자동 로그인 쿠키는 없다 |
 | Q7 | 아이템 설명 | 선택. 공백이면 NULL. 최대 2,000자 |
-| Q8 | 가입 직후 로그인 | 가입 성공 시 로그인 처리 함수를 호출하고 목록으로 이동한다 |
+| Q8 | 가입 직후 로그인 | 가입 성공 시 로그인과 같은 처리로 세션을 만들고 목록으로 이동한다 |
 
 ## 7. 용어
 

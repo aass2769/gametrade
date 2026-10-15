@@ -1,25 +1,25 @@
 # GameTrade 데이터베이스 설계
 
-상태: 설계안 (구현 전)  
-기준일: 2026-10-14  
+상태: Laravel 구현 기준  
+기준일: 2026-10-15  
 요구사항: `docs/requirements.md`
 
-구현 단계 전에는 `sql/schema.sql`과 `sql/seed.sql` 파일을 만들지 않는다. 이 문서의 SQL이 그 파일의 원본이다.
+테이블은 `php artisan migrate`가 `database/migrations`를 실행해서 만든다. 샘플 행은 `php artisan db:seed`가 `SampleDataSeeder`로 넣는다. 아래 SQL은 그 마이그레이션이 만드는 애플리케이션 테이블의 내용이다. `sessions`, `cache`, `jobs`, `personal_access_tokens`, `migrations`는 Laravel 설정용 테이블이라 이 절의 상품 모델에는 넣지 않는다.
 
 기본안은 요구사항 C3의 선택지 A다. `users`, `games`, `game_servers`, `items` 네 테이블이다.
 
 ## 1. 설계 기준
 
 - 엔진은 InnoDB, 문자 집합은 `utf8mb4`, 콜레이션은 `utf8mb4_unicode_ci`다.
-- 가격은 원 단위 정수다. `INT UNSIGNED`를 사용한다. PDO에서 금액이 문자열이 되는 DECIMAL을 피하고, PHP 초보 단계에서 정수 검증과 맞게 둔다. 상한은 100,000,000원이다. `INT UNSIGNED` 범위 안에 있다.
+- 가격은 원 단위 정수다. `INT UNSIGNED`를 사용한다. 금액이 소수로 저장되는 DECIMAL은 쓰지 않는다. 상한은 100,000,000원이다. `INT UNSIGNED` 범위 안에 있다.
 - 수량은 `INT UNSIGNED`, 1 이상 9,999 이하다.
 - 시각은 `DATETIME`이다. `created_at` 기본값은 `CURRENT_TIMESTAMP`, `updated_at`은 갱신 시 `CURRENT_TIMESTAMP`다.
-- 비밀번호 컬럼은 `VARCHAR(255)`다. `password_hash(..., PASSWORD_DEFAULT)` 결과를 저장한다. bcrypt는 60자이고, 이후 기본 알고리즘이 바뀌어도 255자 안에 들어가게 둔다. 평문 컬럼은 없다.
+- 비밀번호 컬럼 이름은 `password`이고 `VARCHAR(255)`다. Laravel `hashed` 캐스트가 bcrypt 해시를 저장한다. bcrypt는 60자이고, 이후 알고리즘이 바뀌어도 255자 안에 들어가게 둔다. 평문 컬럼은 없다.
 - 상태 전환 규칙은 DB 트리거로 만들지 않는다. PHP에서 검사하고, UPDATE의 WHERE에 현재 상태를 넣는다.
 - 회원 탈퇴 기능이 없으므로 부모 행 삭제는 애플리케이션 기능이 아니다. 외래 키는 `ON DELETE RESTRICT`로 두어, 실수로 부모를 지울 때 자식이 남지 않게 막는다.
 - 상품 삭제는 자식 테이블이 없는 물리 삭제다.
 
-XAMPP의 MariaDB 10.2 이상과 MySQL 8.0.16 이상은 `CHECK`를 강제한다. 구현 1단계에서 `SELECT VERSION();`으로 확인하고, CHECK가 무시되는 구버전이면 애플리케이션 검증만 신뢰한다고 README에 적는다. 스키마의 CHECK는 그대로 둔다.
+Docker의 MySQL 8.4는 `CHECK`를 강제한다. 가격과 수량 CHECK는 `items` 마이그레이션이 MySQL일 때만 추가한다. 사용자에게 보이는 오류 문구는 Form Request 검증 문장이다.
 
 ## 2. 게임과 서버를 나눈 이유
 
@@ -45,7 +45,7 @@ XAMPP의 MariaDB 10.2 이상과 MySQL 8.0.16 이상은 `CHECK`를 강제한다. 
 | --- | --- | --- | --- | --- | --- |
 | `id` | `BIGINT UNSIGNED` | NO | PK, AUTO_INCREMENT |  | 내부 식별자. 세션에 저장하는 값 |
 | `username` | `VARCHAR(20)` | NO | UNIQUE `uk_users_username` |  | 로그인 아이디. 화면에 판매자 이름으로 표시 |
-| `password_hash` | `VARCHAR(255)` | NO |  |  | `password_hash()` 결과. 조회 화면에 출력하지 않음 |
+| `password` | `VARCHAR(255)` | NO |  |  | bcrypt 해시. 조회 화면에 출력하지 않음 |
 | `created_at` | `DATETIME` | NO |  | `CURRENT_TIMESTAMP` | 가입 시각 |
 | `updated_at` | `DATETIME` | NO |  | `CURRENT_TIMESTAMP` ON UPDATE | 행 수정 시각. 현재 기능에서는 가입 시와 동일하게 남을 수 있음 |
 
@@ -113,7 +113,7 @@ ENUM을 쓰는 이유: 허용 값이 세 개로 고정되고, 잘못된 문자�
 
 데이터베이스 이름: `gametrade`.
 
-애플리케이션 계정은 `gametrade` 스키마에 대해 `SELECT`, `INSERT`, `UPDATE`, `DELETE`만 가진다. `DROP`, `ALTER`, `CREATE`는 로컬 관리 계정으로 스키마를 적용할 때만 사용한다.
+로컬 연습 계정 `gametrade`는 이 데이터베이스에서 마이그레이션을 실행하므로 테이블 생성 권한도 있다. 비밀번호는 `.env`에만 둔다.
 
 ```sql
 CREATE DATABASE IF NOT EXISTS gametrade
@@ -125,7 +125,7 @@ USE gametrade;
 CREATE TABLE users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '내부 식별자',
   username VARCHAR(20) NOT NULL COMMENT '로그인 아이디',
-  password_hash VARCHAR(255) NOT NULL COMMENT 'password_hash() 결과',
+  password VARCHAR(255) NOT NULL COMMENT 'bcrypt 해시',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '가입 시각',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정 시각',
   PRIMARY KEY (id),
@@ -195,15 +195,9 @@ CREATE TABLE items (
 | 철기전기 | 1서버, 2서버 |
 | 아스트라온라인 | 오리온, 시리우스 |
 
-상품 시드가 필요하면 회원 1명을 먼저 넣는다. 비밀번호 해시는 SQL에 추측 가능한 평문을 적지 않고, 구현 때 로컬에서 한 번 생성한다.
+샘플 회원은 `seller1`, `seller2`다. 비밀번호는 시더에 평문으로 적고, 저장할 때 모델이 해시한다. 그 값은 로컬 연습용이며 README에 샘플 계정이라고 적는다. 해시 문자열은 이 문서에 고정하지 않는다.
 
-```bash
-php -r "echo password_hash('change-me', PASSWORD_DEFAULT), PHP_EOL;"
-```
-
-`change-me`는 자리 표시자다. 실제 시드 비밀번호는 로컬에서만 정하고, README에는 "샘플 계정이며 운영 비밀번호가 아니다"라고 적는다. 해시 문자열을 설계 문서에 고정하지 않는다. `PASSWORD_DEFAULT` 결과가 환경마다 달라질 수 있기 때문이다.
-
-시드 상품은 각 상태(`ON_SALE`, `IN_PROGRESS`, `COMPLETED`)가 목록에 최소 1건씩 보이게 3건 이상 넣는다. 판매자 표시와 권한 테스트를 위해 회원은 2명 이상 둔다.
+시드 상품은 판매 중, 거래 진행 중, 거래 완료가 목록에 보이게 둔다. 권한 확인을 위해 두 회원이 서로 다른 상품을 가진다.
 
 삽입 순서는 `users` → `games` → `game_servers` → `items`다.
 
@@ -248,7 +242,7 @@ erDiagram
     users {
         bigint id PK
         varchar username UK
-        varchar password_hash
+        varchar password
         datetime created_at
         datetime updated_at
     }
@@ -286,11 +280,11 @@ erDiagram
 - 상품 쪽의 `user_id`는 `users.id`를 가리키는 외래 키다.
 - 상품 쪽의 `server_id`는 `game_servers.id`를 가리키는 외래 키다.
 - 서버 쪽의 `game_id`는 `games.id`를 가리키는 외래 키다.
-- `password_hash`는 관계에 쓰이지 않는다. 인증 입력과 `password_verify()`로만 비교한다.
+- `password`는 관계에 쓰이지 않는다. 로그인할 때만 해시와 비교한다.
 
 ## 7. 상태 값
 
-화면 라벨은 DB에 저장하지 않는다. PHP 배열로만 매핑한다.
+화면 라벨은 DB에 저장하지 않는다. `ItemStatus`가 한글 라벨로 매핑한다.
 
 ```mermaid
 stateDiagram-v2
@@ -437,7 +431,7 @@ WHERE id = :id
   AND status = 'ON_SALE';
 ```
 
-실행 전에 상세 조회로 존재와 작성자를 확인해 404와 403을 나눈다. UPDATE의 `user_id`, `status` 조건은 그 사이 요청을 한 번 더 막는다. `rowCount`가 0이면 "현재 상태에서는 수정할 수 없습니다."를 보여 준다.
+실행 전에 상세 조회로 존재와 작성자를 확인해 404와 403을 나눈다. UPDATE의 `user_id`, `status` 조건은 그 사이 요청을 한 번 더 막는다. 갱신이 0건이어도 다시 읽어 작성자가 맞고 상태가 `ON_SALE`이면 성공이다. 상태가 바뀌었으면 "현재 상태에서는 수정할 수 없습니다."를 보여 준다.
 
 ### 8.6 삭제
 
@@ -460,22 +454,22 @@ WHERE id = :id
   AND status = :current_status;
 ```
 
-`:next_status`는 PHP 허용 표에 있는 값만 바인딩한다. `rowCount`가 0이면 갱신하지 않은 것으로 보고 상세 화면에서 다시 조회한 뒤 메시지를 보여 준다.
+상태 변경은 `Item::transitionTo()`가 트랜잭션 안에서 행을 잠근 뒤 허용 표와 비교한다. 허용되지 않으면 400 "허용되지 않는 상태 변경입니다."다.
 
 ### 8.8 회원
 
 ```sql
-SELECT id, username, password_hash
+SELECT id, username, password
 FROM users
 WHERE username = :username;
 ```
 
 ```sql
-INSERT INTO users (username, password_hash)
-VALUES (:username, :password_hash);
+INSERT INTO users (username, password)
+VALUES (:username, :password);
 ```
 
-중복 아이디는 UNIQUE가 거절한다. 애플리케이션은 SQLSTATE `23000`의 중복 키를 사용자 메시지로 바꾼다. 다른 SQLSTATE는 로그에만 남기고 일반 오류 메시지를 보여 준다.
+`:password`는 해시 문자열이다. 중복 아이디는 UNIQUE가 거절한다. 애플리케이션은 그 중복을 "이미 사용 중인 아이디입니다."로 바꾼다. 그 밖의 데이터베이스 오류는 로그에만 남기고 일반 오류 메시지를 보여 준다.
 
 ## 9. 샘플 규모와 인덱스
 

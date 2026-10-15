@@ -1,15 +1,15 @@
 # GameTrade 기능 동작 흐름
 
-상태: 설계안 (구현 전)  
-기준일: 2026-10-14
+상태: Laravel 구현 기준  
+기준일: 2026-10-15
 
-경로의 기준은 DocumentRoot가 `public/`인 로컬 사이트다. 데이터 변경이 성공하면 Post-Redirect-Get로 이동한다. 성공 응답으로 폼 HTML을 다시 그리지 않는다.
+화면 주소는 `routes/web.php`다. 데이터 변경이 성공하면 다른 주소로 리다이렉트한다. 성공 응답으로 폼 HTML을 다시 그리지 않는다.
 
 공통 예외:
 
-- DB 연결 실패와 예상하지 못한 PDO 예외는 로그에만 남긴다. 화면은 "잠시 후 다시 시도해 주세요."다.
-- POST에 CSRF 토큰이 없거나 틀리면 403이고, 데이터는 변하지 않는다.
-- 지원하지 않는 메서드는 405다.
+- DB 연결 실패와 예상하지 못한 예외는 `storage/logs/laravel.log`에만 남긴다. 화면은 "잠시 후 다시 시도해 주세요."다.
+- 웹의 변경 요청에 CSRF 토큰 `_token`이 없거나 틀리면 HTTP 419이고, 데이터는 변하지 않는다. 작성자가 아니면 HTTP 403이다.
+- 지원하지 않는 메서드는 405다. `GET /logout`은 405이고 `Allow: POST`다.
 
 쿼리 형태는 `docs/database-design.md` 8절을 따른다.
 
@@ -22,32 +22,34 @@
 
 HTTP 요청:
 
-- 화면: `GET /register.php`
-- 제출: `POST /register.php`
-- 필드: `username`, `password`, `password_confirm`, `csrf_token`
+- 화면: `GET /register`
+- 제출: `POST /register`
+- 필드: `username`, `password`, `password_confirm`, `_token`
 
-PHP 처리:
+서버 처리:
 
-1. `bootstrap.php`로 세션을 연다.
-2. 이미 로그인되어 있으면 목록으로 리다이렉트한다.
+1. Laravel이 세션을 연다.
+2. 이미 로그인되어 있으면 목록으로 리다이렉트한다. `guest` 미들웨어다.
 3. GET이면 빈 폼을 보여 준다.
 4. POST면 CSRF를 검사한다.
-5. 아이디를 trim하고 형식(4~20자, 영문·숫자·밑줄)을 검사한다.
+5. `RegisterRequest`가 아이디를 trim하고 형식(4~20자, 영문·숫자·밑줄)을 검사한다.
 6. 비밀번호 길이 8~64자와 확인 값 일치를 검사한다.
 7. 오류가 있으면 DB를 호출하지 않고 폼을 다시 그린다. 아이디만 유지한다.
-8. `password_hash($password, PASSWORD_DEFAULT)`로 해시를 만든다.
-9. `createUser()`가 INSERT를 실행한다.
+8. `User` 모델의 `hashed` 캐스트가 해시를 만든다.
+9. `User::create()`가 INSERT를 실행한다.
 
 데이터베이스:
 
 ```sql
-INSERT INTO users (username, password_hash)
-VALUES (:username, :password_hash);
+INSERT INTO users (username, password)
+VALUES (:username, :password);
 ```
+
+`:password`는 해시 문자열이다.
 
 처리 결과:
 
-- 성공하면 `loginUser()`로 세션을 만들고 플래시에 "가입했습니다."를 넣은 뒤 `GET /index.php`로 이동한다.
+- 성공하면 로그인과 같은 처리로 세션을 만들고 플래시에 "가입했습니다."를 넣은 뒤 `GET /`로 이동한다.
 - 중복 UNIQUE면 "이미 사용 중인 아이디입니다."를 폼에 보여 준다.
 
 사용자에게 보이는 화면:
@@ -63,7 +65,7 @@ VALUES (:username, :password_hash);
 | 비밀번호 불일치 또는 길이 오류 | 가입 행 없음 |
 | 이미 있는 아이디 | 가입 행 없음. 중복 메시지 |
 | 동시에 같은 아이디 INSERT | 한 건만 저장. 나머지는 중복 메시지 |
-| CSRF 누락 | 403. 행 없음 |
+| CSRF 누락 | 419. 행 없음 |
 | 로그인 상태에서 POST | 목록으로 이동. 행 없음 |
 
 ## 2. 로그인
@@ -74,24 +76,23 @@ VALUES (:username, :password_hash);
 
 HTTP 요청:
 
-- 화면: `GET /login.php`
-- 제출: `POST /login.php`
-- 필드: `username`, `password`, `csrf_token`
+- 화면: `GET /login`
+- 제출: `POST /login`
+- 필드: `username`, `password`, `_token`
 
-PHP 처리:
+서버 처리:
 
 1. 이미 로그인되어 있으면 목록으로 보낸다.
 2. POST CSRF를 검사한다.
-3. `findUserByUsername()`으로 회원을 찾는다.
-4. 회원이 없어도 `password_verify()`를 더미 해시에 대해 한 번 호출한다. 더미 해시는 코드에 고정한 유효한 `password_hash` 결과다. 계정 존재 여부에 따라 응답 시간 차이가 크게 벌어지지 않게 하기 위한 절차다.
-5. 회원이 있고 `password_verify($password, $user['password_hash'])`가 참이면 성공이다.
-6. 성공 시 `session_regenerate_id(true)`를 호출하고 세션에 `user_id`, `username`만 저장한다.
-7. CSRF 토큰을 세션에서 지워 다음 폼이 새 토큰을 만들게 한다.
+3. `Authenticator`가 아이디로 회원을 찾는다.
+4. 회원이 없어도 더미 해시와 한 번 비교한다. 계정 존재 여부에 따라 응답 시간 차이가 크게 벌어지지 않게 하기 위한 절차다.
+5. 회원이 있고 입력 비밀번호가 `users.password` 해시와 맞으면 성공이다.
+6. 성공 시 세션 ID를 재발급하고 세션에 사용자 id와 username만 저장한다.
 
 데이터베이스:
 
 ```sql
-SELECT id, username, password_hash
+SELECT id, username, password
 FROM users
 WHERE username = :username;
 ```
@@ -100,7 +101,7 @@ WHERE username = :username;
 
 처리 결과:
 
-- 성공: `GET /index.php`로 이동
+- 성공: `GET /`로 이동
 - 실패: 로그인 폼에 "아이디 또는 비밀번호가 올바르지 않습니다."
 
 사용자에게 보이는 화면:
@@ -115,7 +116,7 @@ WHERE username = :username;
 | 없는 아이디 | 공통 실패 메시지. 아이디가 없다는 문구는 쓰지 않음 |
 | 비밀번호 불일치 | 같은 공통 실패 메시지 |
 | 빈 값 | 같은 공통 실패 메시지 |
-| CSRF 누락 | 403. 세션에 사용자 없음 |
+| CSRF 누락 | 419. 세션에 사용자 없음 |
 | 세션 저장 경로를 쓸 수 없음 | 일반 오류 메시지. 로그에 원인 |
 
 ## 3. 로그아웃
@@ -126,16 +127,14 @@ WHERE username = :username;
 
 HTTP 요청:
 
-- `POST /logout.php`
-- 필드: `csrf_token`
+- `POST /logout`
+- 필드: `_token`
 
-PHP 처리:
+서버 처리:
 
-1. POST가 아니면 405로 종료한다. 세션은 유지한다.
-2. CSRF를 검사한다. 비로그인 상태의 POST도 토큰이 맞으면 세션을 정리하고 목록으로 보낸다.
-3. `$_SESSION`을 비운다.
-4. 세션 쿠키 이름이 있으면 만료 시각을 과거로 한 빈 쿠키를 보낸다.
-5. `session_destroy()`를 호출한다.
+1. GET이면 405로 종료한다. 세션은 유지한다.
+2. CSRF를 검사한다.
+3. `AuthController`가 세션을 폐기하고 목록으로 보낸다.
 
 데이터베이스:
 
@@ -143,7 +142,7 @@ PHP 처리:
 
 처리 결과:
 
-- `GET /index.php`로 이동한다.
+- `GET /`로 이동한다.
 - 이후 요청의 헤더는 로그인, 회원가입을 보여 준다.
 
 사용자에게 보이는 화면:
@@ -155,7 +154,7 @@ PHP 처리:
 | 상황 | 결과 |
 | --- | --- |
 | GET으로 로그아웃 주소 접속 | 405. 로그인 유지 |
-| CSRF 누락 | 403. 로그인 유지 |
+| CSRF 누락 | 419. 로그인 유지 |
 | 이미 로그아웃된 세션 | 목록으로 이동 |
 
 ## 4. 아이템 목록 조회
@@ -166,14 +165,14 @@ PHP 처리:
 
 HTTP 요청:
 
-- `GET /index.php`
+- `GET /`
 
-PHP 처리:
+서버 처리:
 
-1. 세션을 시작해 헤더의 로그인 상태만 판단한다. 목록 자체는 로그인과 무관하다.
-2. `searchItems()`를 필터 없이 호출한다.
-3. 각 행의 상태 코드를 한글 라벨로 바꿔 표에 출력한다.
-4. 텍스트는 `e()`로 이스케이프한다.
+1. 세션으로 헤더의 로그인 상태만 판단한다. 목록 자체는 로그인과 무관하다.
+2. `ItemController::index`가 `Item` 목록 조건을 필터 없이 호출한다.
+3. 각 행의 상태 코드를 `ItemStatus` 한글 라벨로 바꿔 표에 출력한다.
+4. 텍스트는 Blade `{{ }}`로 이스케이프한다.
 
 데이터베이스:
 
@@ -207,11 +206,11 @@ PHP 처리:
 
 HTTP 요청:
 
-- `GET /index.php?game_id={id}&q={단어}`
+- `GET /?game_id={id}&q={단어}`
 - 검색은 GET이다. 데이터를 바꾸지 않는다.
 - CSRF는 요구하지 않는다.
 
-PHP 처리:
+서버 처리:
 
 1. `game_id`가 없으면 게임 조건을 붙이지 않는다.
 2. `game_id`가 있으면 정수인지 확인한다. 정수가 아니면 게임 조건을 무시하고 목록을 보여 준다.
@@ -220,7 +219,7 @@ PHP 처리:
 5. `%`와 `_`를 제거한다.
 6. 남은 검색어가 있으면 `LIKE` 값의 양쪽에 `%`를 붙여 바인딩한다.
 7. 게임과 이름은 AND다.
-8. P1에서는 `sort`와 `page`를 허용 목록으로 해석한다. P0 진입 파일은 이 값을 읽지 않는다.
+8. P1에서는 `sort`와 `page`를 허용 목록으로 해석한다. P0의 `ItemController::index`는 이 값을 읽지 않는다.
 
 데이터베이스:
 
@@ -260,20 +259,20 @@ PHP 처리:
 
 HTTP 요청:
 
-- 화면: `GET /item-create.php`
-- 제출: `POST /item-create.php`
-- 필드: `server_id`, `item_name`, `price`, `quantity`, `description`, `csrf_token`
+- 화면: `GET /items/create`
+- 제출: `POST /items`
+- 필드: `server_id`, `item_name`, `price`, `quantity`, `description`, `_token`
 
-PHP 처리:
+서버 처리:
 
-1. `requireLogin()`. 비로그인이면 `GET /login.php`로 이동한다. GET과 POST 모두 적용한다.
+1. `auth` 미들웨어. 비로그인이면 `GET /login`으로 이동한다. GET과 POST 모두 적용한다.
 2. GET이면 서버 목록을 읽어 폼을 보여 준다.
-3. POST면 CSRF 후 `validateItemInput()`을 호출한다.
-4. 가격과 수량은 `filter_var(..., FILTER_VALIDATE_INT)`와 최소·최대 범위로 검사한다. `(int)` 캐스팅으로 큰 숫자를 자르지 않는다.
+3. POST면 CSRF 후 `ItemRequest`가 값을 검사한다.
+4. 가격과 수량은 정수 검증과 최소·최대 범위로 검사한다. `(int)` 캐스팅으로 큰 숫자를 자르지 않는다.
 5. 설명은 trim 후 빈 값이면 null, 2,000자를 넘으면 오류다.
-6. `server_id`가 `game_servers`에 있는지도 검증 함수에서 확인한다.
+6. `server_id`가 `game_servers`에 있는지도 검증에서 확인한다.
 7. 오류가 있으면 INSERT하지 않고 폼을 다시 그린다.
-8. 성공하면 `createItem(세션 user_id, 정제값)`을 호출한다. 상태 값은 함수 안에서만 `ON_SALE`로 넣는다. 폼에 `status`가 있어도 무시한다.
+8. 성공하면 `ItemController::store`가 세션 사용자 id로 상품을 만든다. 상태는 항상 `ON_SALE`이다. 폼에 `status`가 있어도 무시한다.
 
 데이터베이스:
 
@@ -283,7 +282,7 @@ PHP 처리:
 
 처리 결과:
 
-- 성공: 새 id로 `GET /item.php?id={id}` 이동. 플래시 "상품을 등록했습니다."
+- 성공: 새 id로 `GET /items/{id}` 이동. 플래시 "상품을 등록했습니다."
 - 실패: HTTP 200 폼과 오류. 상태 코드 400을 쓰고 싶으면 400을 써도 된다. 기본안은 폼 재표시에 200을 사용한다.
 
 사용자에게 보이는 화면:
@@ -299,7 +298,7 @@ PHP 처리:
 | 필수값 누락, 가격 음수·0·소수, 수량 0 이하 | 폼 오류. INSERT 없음 |
 | 없는 `server_id`를 조작해 POST | 서버 검증 오류. INSERT 없음 |
 | 설명에 `<script>` 포함 | 저장은 된다. 상세 출력은 이스케이프되어 스크립트가 실행되지 않음 |
-| CSRF 누락 | 403. INSERT 없음 |
+| CSRF 누락 | 419. INSERT 없음 |
 | CHECK 제약을 통과한 검증 버그로 DB가 거절 | 일반 오류. 제약 문구는 화면에 없음 |
 
 ## 7. 아이템 수정
@@ -311,21 +310,20 @@ PHP 처리:
 
 HTTP 요청:
 
-- 화면: `GET /item-edit.php?id={id}`
-- 제출: `POST /item-edit.php`
-- 필드: `id`, `server_id`, `item_name`, `price`, `quantity`, `description`, `csrf_token`
+- 화면: `GET /items/{id}/edit`
+- 제출: `PUT /items/{id}`
+- 필드: `server_id`, `item_name`, `price`, `quantity`, `description`, `_token`, `_method=PUT`
 
-PHP 처리:
+서버 처리:
 
-1. `requireLogin()`.
-2. `id`를 정수로 해석하지 못하면 404.
-3. `findItem(id)`가 없으면 404.
-4. `item.user_id`가 세션 사용자와 다르면 403 "이 상품을 수정할 수 없습니다."
-5. 상태가 `ON_SALE`이 아니면 403 "현재 상태에서는 수정할 수 없습니다."
-6. GET이면 기존 값을 폼에 넣는다. 출력은 이스케이프한다.
-7. POST면 CSRF와 `validateItemInput()`을 수행한다.
-8. 검증을 통과하면 `updateItem()`을 호출한다.
-9. 폼의 `user_id`는 읽지 않는다. 다른 상품 id로 바꾸면 3~5를 그 id에 대해 다시 한다.
+1. `auth` 미들웨어.
+2. `id`가 숫자가 아니거나 상품이 없으면 404.
+3. `ItemPolicy`가 작성자가 아니면 403 "이 상품을 수정할 수 없습니다."
+4. 상태가 `ON_SALE`이 아니면 403 "현재 상태에서는 수정할 수 없습니다."
+5. GET이면 기존 값을 폼에 넣는다. 출력은 이스케이프한다.
+6. PUT이면 CSRF와 `ItemRequest`를 수행한다.
+7. 검증을 통과하면 `Item::revise()`를 호출한다.
+8. 폼의 `user_id`는 읽지 않는다. 경로의 상품 id로만 판단한다.
 
 데이터베이스:
 
@@ -335,7 +333,8 @@ PHP 처리:
 처리 결과:
 
 - 성공: 상세로 이동. "상품을 수정했습니다."
-- `rowCount`가 0: 상태나 소유자가 요청 중에 달라진 것이다. "현재 상태에서는 수정할 수 없습니다."
+- 값이 그대로여도 작성자가 판매 중이면 성공으로 본다. `UPDATE`가 0건이어도 다시 읽어 소유자와 상태가 같으면 성공이다.
+- 그 사이에 상태가 바뀌었으면 "현재 상태에서는 수정할 수 없습니다."
 - 검증 실패: 수정 폼 재표시
 
 사용자에게 보이는 화면:
@@ -353,7 +352,7 @@ PHP 처리:
 | `IN_PROGRESS` 또는 `COMPLETED` | 403. UPDATE 없음 |
 | 가격·수량·이름 오류 | 폼 오류. UPDATE 없음 |
 | GET 쿼리스트링만으로 접근 | 폼만 표시. 저장되지 않음 |
-| CSRF 누락 | 403 |
+| CSRF 누락 | 419 |
 
 ## 8. 아이템 삭제
 
@@ -364,18 +363,18 @@ PHP 처리:
 
 HTTP 요청:
 
-- 확인: `GET /item-delete.php?id={id}`
-- 실행: `POST /item-delete.php`
-- POST 필드: `id`, `csrf_token`
+- 확인: `GET /items/{id}/delete`
+- 실행: `DELETE /items/{id}`
+- 필드: `_token`, `_method=DELETE`
 
-PHP 처리:
+서버 처리:
 
-1. `requireLogin()`.
+1. `auth` 미들웨어.
 2. 상품이 없으면 404.
 3. 작성자가 아니면 403 "이 상품을 삭제할 수 없습니다."
 4. `ON_SALE`이 아니면 403 "현재 상태에서는 삭제할 수 없습니다."
 5. GET이면 아이템명과 경고 문장만 보여 준다. DELETE를 실행하지 않는다.
-6. POST면 CSRF 후 `deleteItem(id, 세션 user_id)`를 호출한다.
+6. DELETE면 CSRF 후 `Item::removeListing()`을 호출한다.
 
 데이터베이스:
 
@@ -403,7 +402,7 @@ WHERE id = :id
 | 비로그인 | 로그인으로 이동 |
 | 다른 회원의 상품 GET 또는 POST | 403. 행 유지 |
 | 상세 링크를 주소창에 넣어 GET | 확인 화면까지만. 행 유지 |
-| POST CSRF 누락 | 403. 행 유지 |
+| POST CSRF 누락 | 419. 행 유지 |
 | `COMPLETED` 상품 | 403. 행 유지 |
 
 ## 9. 거래 상태 변경
@@ -414,21 +413,20 @@ WHERE id = :id
 
 HTTP 요청:
 
-- 폼 표시: `GET /item.php?id={id}` 안의 POST 폼
-- 제출: `POST /item-status.php`
-- 필드: `id`, `status`, `csrf_token`
-- `GET /item-status.php`는 405
+- 폼 표시: `GET /items/{id}` 안의 폼
+- 제출: `POST /items/{id}/status`
+- 필드: `status`, `_token`
+- `GET /items/{id}/status`는 라우트가 없다
 
-PHP 처리:
+서버 처리:
 
-1. POST가 아니면 405.
-2. `requireLogin()`.
-3. CSRF를 검사한다.
-4. 상품이 없으면 404.
-5. 작성자가 아니면 403 "이 상품의 상태를 변경할 수 없습니다."
-6. `allowedNextStatuses(현재 상태)`에 POST `status`가 없으면 400 "허용되지 않는 상태 변경입니다." 행은 유지한다.
-7. 있으면 `changeItemStatus()`를 호출한다.
-8. 폼에 있는 현재 상태를 신뢰하지 않는다. DB에서 읽은 현재 상태만 사용한다.
+1. `auth` 미들웨어.
+2. CSRF를 검사한다.
+3. 상품이 없으면 404.
+4. 작성자가 아니면 403 "이 상품의 상태를 변경할 수 없습니다."
+5. `ItemStatus` 허용 표에 요청 `status`가 없으면 400 "허용되지 않는 상태 변경입니다." 행은 유지한다.
+6. 있으면 `Item::transitionTo()`를 트랜잭션과 행 잠금 안에서 호출한다.
+7. 폼에 있는 현재 상태를 신뢰하지 않는다. DB에서 읽은 현재 상태만 사용한다.
 
 데이터베이스:
 
@@ -450,8 +448,8 @@ WHERE id = :id
 
 처리 결과:
 
-- `rowCount`가 1이면 상세로 이동. "거래 상태를 변경했습니다."
-- `rowCount`가 0이면 "상태가 이미 변경되었습니다." 상세로 이동해 최신 상태를 보여 준다.
+- 허용된 전환이면 상세로 이동. "거래 상태를 변경했습니다."
+- 그 사이에 상태가 바뀌어 허용 표에 없으면 400 "허용되지 않는 상태 변경입니다." 행은 유지한다.
 
 사용자에게 보이는 화면:
 
@@ -469,7 +467,7 @@ WHERE id = :id
 | 정의되지 않은 문자열 | 400. 상태 유지 |
 | 다른 회원이 작성자인 상품 | 403. 상태 유지 |
 | 비로그인 | 로그인으로 이동. 상태 유지 |
-| 새로고침으로 POST 재전송 | 이미 바뀐 상태라 허용 표에서 거절되거나 rowCount 0 |
+| 새로고침으로 POST 재전송 | 이미 바뀐 상태라 허용 표에서 400으로 거절된다 |
 
 ## 10. 내 판매 상품 조회
 
@@ -482,12 +480,12 @@ WHERE id = :id
 
 HTTP 요청:
 
-- `GET /my-items.php`
+- `GET /my/items`
 
-PHP 처리:
+서버 처리:
 
-1. `requireLogin()`.
-2. `listItemsByUser(세션 user_id)`를 호출한다.
+1. `auth` 미들웨어.
+2. `ItemController::mine`이 세션 사용자의 상품만 조회한다.
 3. 상태가 `ON_SALE`인 행만 수정, 삭제 확인 링크를 출력한다.
 4. 모든 행에 상세 링크를 출력한다.
 5. 다른 사용자의 id를 쿼리스트링으로 받지 않는다. 세션 값만 WHERE에 넣는다.
