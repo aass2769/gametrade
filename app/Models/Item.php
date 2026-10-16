@@ -40,10 +40,13 @@ class Item extends Model
         return $this->belongsTo(GameServer::class, 'server_id');
     }
 
-    public function scopeFiltered(Builder $query, ?int $gameId, ?string $name): Builder
+    public function scopeFiltered(Builder $query, ?int $gameId, ?string $name, ?int $serverId = null): Builder
     {
         return $query
-            ->when($gameId !== null, function (Builder $query) use ($gameId): void {
+            ->when($serverId !== null, function (Builder $query) use ($serverId): void {
+                $query->where('server_id', $serverId);
+            })
+            ->when($serverId === null && $gameId !== null, function (Builder $query) use ($gameId): void {
                 $query->whereHas('server', function (Builder $server) use ($gameId): void {
                     $server->where('game_id', $gameId);
                 });

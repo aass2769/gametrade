@@ -14,6 +14,6 @@ class ExampleTest extends TestCase
         $response = $this->get('/');
 
         $response->assertOk();
-        $response->assertSee('아이템 목록');
+        $response->assertSee('전체 게임');
     }
 }

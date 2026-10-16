@@ -1,10 +1,19 @@
 @extends('layouts.app')
 
-@section('title', '아이템 목록')
+@section('title', $selectedGame?->name ?? '전체 상품')
 
 @section('content')
-    <h1>아이템 목록</h1>
-    <form class="filters" method="get" action="{{ route('items.index') }}">
+    <div class="page-heading">
+        <div>
+            <h1>{{ $selectedGame?->name ?? '전체 상품' }}</h1>
+        </div>
+        <a class="button button-ghost" href="{{ route('items.index') }}">전체 게임</a>
+    </div>
+
+    <form class="filters filter-panel" method="get" action="{{ route('items.index') }}">
+        @unless ($filters->gameId)
+            <input type="hidden" name="all" value="1">
+        @endunless
         <label>
             게임
             <select name="game_id">
@@ -15,8 +24,17 @@
             </select>
         </label>
         <label>
+            서버
+            <select name="server_id" @disabled($servers->isEmpty())>
+                <option value="">전체</option>
+                @foreach ($servers as $server)
+                    <option value="{{ $server->id }}" @selected($filters->serverId === $server->id)>{{ $server->name }}</option>
+                @endforeach
+            </select>
+        </label>
+        <label class="filter-grow">
             아이템명
-            <input type="text" name="q" maxlength="100" value="{{ $filters->rawQuery }}">
+            <input type="text" name="q" maxlength="100" value="{{ $filters->rawQuery }}" placeholder="아이템명 검색">
         </label>
         <label>
             정렬
@@ -26,42 +44,36 @@
                 @endforeach
             </select>
         </label>
-        <button type="submit">검색</button>
+        <button type="submit" class="button button-primary">검색</button>
     </form>
+
     @if ($filters->error)
         <p class="error">{{ $filters->error }}</p>
     @elseif ($items->isEmpty() && $items->total() === 0)
-        <p>{{ $filters->isActive() ? '검색 결과가 없습니다.' : '등록된 아이템이 없습니다.' }}</p>
+        <div class="empty-state">
+            <p>{{ $filters->isActive() ? '검색 결과가 없습니다.' : '등록된 아이템이 없습니다.' }}</p>
+        </div>
     @elseif ($items->isNotEmpty())
-        <div class="table-wrap">
-            <table>
-                <thead>
-                <tr>
-                    <th>게임</th>
-                    <th>서버</th>
-                    <th>아이템명</th>
-                    <th>가격</th>
-                    <th>수량</th>
-                    <th>상태</th>
-                    <th>등록일</th>
-                </tr>
-                </thead>
-                <tbody>
-                @foreach ($items as $item)
-                    <tr>
-                        <td>{{ $item->server->game->name }}</td>
-                        <td>{{ $item->server->name }}</td>
-                        <td><a href="{{ route('items.show', $item) }}">{{ $item->item_name }}</a></td>
-                        <td>{{ number_format($item->price) }}원</td>
-                        <td>{{ $item->quantity }}</td>
-                        <td><span class="badge badge-{{ $item->status->value }}">{{ $item->status->label() }}</span></td>
-                        <td>{{ $item->created_at?->format('Y-m-d H:i') }}</td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
+        <div class="item-grid">
+            @foreach ($items as $item)
+                <article class="item-card">
+                    <div class="item-card-top">
+                        <span class="meta-chip">{{ $item->server->game->name }} · {{ $item->server->name }}</span>
+                        <span class="badge badge-{{ $item->status->value }}">{{ $item->status->label() }}</span>
+                    </div>
+                    <h2 class="item-card-title">
+                        <a href="{{ route('items.show', $item) }}">{{ $item->item_name }}</a>
+                    </h2>
+                    <p class="item-card-price">{{ number_format($item->price) }}원</p>
+                    <div class="item-card-meta">
+                        <span>수량 {{ $item->quantity }}</span>
+                        <span>{{ $item->created_at?->format('Y-m-d H:i') }}</span>
+                    </div>
+                </article>
+            @endforeach
         </div>
     @endif
+
     @if ($items && ($items->lastPage() > 1 || $items->currentPage() > 1))
         <nav class="pager" aria-label="페이지">
             @if ($items->currentPage() > 1)

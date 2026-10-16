@@ -44,7 +44,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 
 | 아이디 | 비밀번호 |
 | --- | --- |
-| seller1 ~ seller12 | seller1234 |
+| seller1 ~ seller20 | seller1234 |
 
 ## API
 

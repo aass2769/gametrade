@@ -19,13 +19,30 @@ class ItemController extends Controller
 {
     public function index(Request $request): View
     {
+        if (! $this->isBrowsingListings($request)) {
+            return view('items.games', [
+                'games' => Game::query()
+                    ->withCount('items')
+                    ->orderBy('id')
+                    ->get(),
+            ]);
+        }
+
         $filters = ItemFilters::fromRequest($request);
         $items = $filters->error === null
             ? $this->listings($filters)->withQueryString()
             : null;
 
+        $selectedGame = $filters->gameId !== null
+            ? Game::query()->find($filters->gameId)
+            : null;
+
         return view('items.index', [
             'games' => Game::query()->orderBy('id')->get(),
+            'selectedGame' => $selectedGame,
+            'servers' => $selectedGame !== null
+                ? $selectedGame->servers()->orderBy('id')->get()
+                : collect(),
             'items' => $items,
             'filters' => $filters,
         ]);
@@ -132,11 +149,21 @@ class ItemController extends Controller
         return view('items.mine', ['items' => $items]);
     }
 
+    private function isBrowsingListings(Request $request): bool
+    {
+        return $request->filled('game_id')
+            || $request->filled('server_id')
+            || $request->filled('q')
+            || $request->has('page')
+            || $request->has('sort')
+            || $request->boolean('all');
+    }
+
     private function listings(ItemFilters $filters): LengthAwarePaginator
     {
         return Item::query()
             ->with(['server.game', 'seller'])
-            ->filtered($filters->gameId, $filters->name)
+            ->filtered($filters->gameId, $filters->name, $filters->serverId)
             ->ordered($filters->sort)
             ->paginate(ItemFilters::PER_PAGE);
     }

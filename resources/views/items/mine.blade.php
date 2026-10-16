@@ -3,46 +3,43 @@
 @section('title', '내 판매 상품')
 
 @section('content')
-    <h1>내 판매 상품</h1>
+    <div class="page-heading">
+        <div>
+            <h1>내 판매 상품</h1>
+        </div>
+        <a class="button button-primary" href="{{ route('items.create') }}">아이템 등록</a>
+    </div>
+
     @if ($items->isEmpty())
-        <p>등록한 상품이 없습니다.</p>
+        <div class="empty-state">
+            <p>등록한 상품이 없습니다.</p>
+        </div>
     @else
-        <div class="table-wrap">
-            <table>
-                <thead>
-                <tr>
-                    <th>게임</th>
-                    <th>서버</th>
-                    <th>아이템명</th>
-                    <th>가격</th>
-                    <th>수량</th>
-                    <th>상태</th>
-                    <th>등록일</th>
-                    <th>동작</th>
-                </tr>
-                </thead>
-                <tbody>
-                @foreach ($items as $item)
-                    <tr>
-                        <td>{{ $item->server->game->name }}</td>
-                        <td>{{ $item->server->name }}</td>
-                        <td><a href="{{ route('items.show', $item) }}">{{ $item->item_name }}</a></td>
-                        <td>{{ number_format($item->price) }}원</td>
-                        <td>{{ $item->quantity }}</td>
-                        <td>{{ $item->status->label() }}</td>
-                        <td>{{ $item->created_at?->format('Y-m-d H:i') }}</td>
-                        <td>
-                            @if ($item->status === \App\Enums\ItemStatus::OnSale)
-                                <a href="{{ route('items.edit', $item) }}">수정</a>
-                                <a href="{{ route('items.delete', $item) }}">삭제</a>
-                            @else
-                                <a href="{{ route('items.show', $item) }}">상세</a>
-                            @endif
-                        </td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
+        <div class="item-grid">
+            @foreach ($items as $item)
+                <article class="item-card">
+                    <div class="item-card-top">
+                        <span class="meta-chip">{{ $item->server->game->name }} · {{ $item->server->name }}</span>
+                        <span class="badge badge-{{ $item->status->value }}">{{ $item->status->label() }}</span>
+                    </div>
+                    <h2 class="item-card-title">
+                        <a href="{{ route('items.show', $item) }}">{{ $item->item_name }}</a>
+                    </h2>
+                    <p class="item-card-price">{{ number_format($item->price) }}원</p>
+                    <div class="item-card-meta">
+                        <span>수량 {{ $item->quantity }}</span>
+                        <span>{{ $item->created_at?->format('Y-m-d H:i') }}</span>
+                    </div>
+                    <div class="item-card-actions">
+                        @if ($item->status === \App\Enums\ItemStatus::OnSale)
+                            <a class="button button-primary" href="{{ route('items.edit', $item) }}">수정</a>
+                            <a class="button button-secondary" href="{{ route('items.delete', $item) }}">삭제</a>
+                        @else
+                            <a class="button button-secondary" href="{{ route('items.show', $item) }}">상세</a>
+                        @endif
+                    </div>
+                </article>
+            @endforeach
         </div>
     @endif
 @endsection

@@ -22,6 +22,12 @@ class TradeFlowTest extends TestCase
 
         $this->get('/')
             ->assertOk()
+            ->assertSee('전체 게임')
+            ->assertSee($game->name)
+            ->assertDontSee('빛나는 포션');
+
+        $this->get('/?game_id='.$game->id)
+            ->assertOk()
             ->assertSee('빛나는 포션')
             ->assertSee('15,000원')
             ->assertSee($game->name)
@@ -33,6 +39,26 @@ class TradeFlowTest extends TestCase
             ->assertSee('seller1')
             ->assertDontSee('$2y$')
             ->assertDontSee('상태 변경');
+    }
+
+    public function test_home_lists_games_and_all_items_link_shows_listings(): void
+    {
+        [$game, $server, $seller] = $this->catalog();
+        $this->listing($seller, $server, '빛나는 포션', 15000);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('전체 게임')
+            ->assertSee($game->name)
+            ->assertSee('전체 상품')
+            ->assertSee('1건')
+            ->assertSee('images/games/lumen-fantasy.jpg', false);
+
+        $this->get('/?all=1')
+            ->assertOk()
+            ->assertSee('전체 상품')
+            ->assertSee('빛나는 포션')
+            ->assertSee('전체 게임');
     }
 
     public function test_missing_item_is_not_found(): void
@@ -63,6 +89,45 @@ class TradeFlowTest extends TestCase
             ->assertDontSee('빛나는 포션');
     }
 
+    public function test_list_can_filter_by_server_within_a_game(): void
+    {
+        [$game, $lumen, $seller] = $this->catalog();
+        $nox = GameServer::query()->create(['game_id' => $game->id, 'name' => '녹스']);
+        $this->listing($seller, $lumen, '루멘 포션', 10000);
+        $this->listing($seller, $nox, '녹스 방패', 20000);
+
+        $this->get('/?'.http_build_query([
+            'game_id' => $game->id,
+            'server_id' => $nox->id,
+        ]))
+            ->assertOk()
+            ->assertSee('녹스 방패')
+            ->assertDontSee('루멘 포션')
+            ->assertSee('루멘')
+            ->assertSee('녹스');
+
+        $otherGame = Game::query()->create(['name' => '철기전기']);
+        $otherServer = GameServer::query()->create(['game_id' => $otherGame->id, 'name' => '1서버']);
+        $this->listing($seller, $otherServer, '강철 장검', 42000);
+
+        $this->get('/?'.http_build_query([
+            'game_id' => $game->id,
+            'server_id' => $otherServer->id,
+        ]))
+            ->assertOk()
+            ->assertSee('루멘 포션')
+            ->assertSee('녹스 방패')
+            ->assertDontSee('강철 장검');
+
+        $this->getJson('/api/v1/items?'.http_build_query([
+            'game_id' => $game->id,
+            'server_id' => $lumen->id,
+        ]))
+            ->assertOk()
+            ->assertJsonFragment(['item_name' => '루멘 포션'])
+            ->assertJsonMissing(['item_name' => '녹스 방패']);
+    }
+
     public function test_list_sort_accepts_only_the_allowed_orders(): void
     {
         [, $server, $seller] = $this->catalog();
@@ -84,7 +149,7 @@ class TradeFlowTest extends TestCase
         $this->get('/?'.http_build_query(['sort' => 'name;drop']))
             ->assertOk()
             ->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
-        $this->get('/')->assertOk()->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
+        $this->get('/?all=1')->assertOk()->assertSeeInOrder(['중간 방패', '싼 포션', '비싼 검']);
 
         $this->getJson('/api/v1/items?sort=price_asc')
             ->assertOk()
@@ -106,27 +171,27 @@ class TradeFlowTest extends TestCase
             $newest[] = sprintf('아이템%02d', $number);
         }
 
-        $this->get('/')
+        $this->get('/?all=1')
             ->assertOk()
             ->assertSeeInOrder($newest)
             ->assertDontSee('아이템01')
             ->assertSee('다음');
 
-        $this->get('/?page=2')
+        $this->get('/?all=1&page=2')
             ->assertOk()
             ->assertSee('아이템01')
             ->assertDontSee('아이템11')
             ->assertSee('이전');
 
-        $this->get('/?page=0')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
-        $this->get('/?page=abc')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
+        $this->get('/?all=1&page=0')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
+        $this->get('/?all=1&page=abc')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
 
-        $this->get('/?page=9')
+        $this->get('/?all=1&page=9')
             ->assertOk()
             ->assertDontSee('아이템01')
             ->assertDontSee('아이템11')
             ->assertDontSee('등록된 아이템이 없습니다.')
-            ->assertSee('?page=1', false);
+            ->assertSee('page=1', false);
 
         $pageTwo = $this->get('/?'.http_build_query([
             'q' => '아이템',
