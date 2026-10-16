@@ -30,9 +30,9 @@
     </form>
     @if ($filters->error)
         <p class="error">{{ $filters->error }}</p>
-    @elseif ($items->isEmpty())
+    @elseif ($items->isEmpty() && $items->total() === 0)
         <p>{{ $filters->isActive() ? '검색 결과가 없습니다.' : '등록된 아이템이 없습니다.' }}</p>
-    @else
+    @elseif ($items->isNotEmpty())
         <div class="table-wrap">
             <table>
                 <thead>
@@ -61,5 +61,22 @@
                 </tbody>
             </table>
         </div>
+    @endif
+    @if ($items && ($items->lastPage() > 1 || $items->currentPage() > 1))
+        <nav class="pager" aria-label="페이지">
+            @if ($items->currentPage() > 1)
+                <a href="{{ $items->url(min($items->currentPage() - 1, $items->lastPage())) }}">이전</a>
+            @endif
+            @for ($page = 1; $page <= $items->lastPage(); $page++)
+                @if ($page === $items->currentPage())
+                    <span aria-current="page">{{ $page }}</span>
+                @else
+                    <a href="{{ $items->url($page) }}">{{ $page }}</a>
+                @endif
+            @endfor
+            @if ($items->hasMorePages())
+                <a href="{{ $items->nextPageUrl() }}">다음</a>
+            @endif
+        </nav>
     @endif
 @endsection

@@ -93,6 +93,62 @@ class TradeFlowTest extends TestCase
             ->assertJsonPath('data.2.item_name', '비싼 검');
     }
 
+    public function test_list_pages_hold_ten_items_and_keep_filters(): void
+    {
+        [, $server, $seller] = $this->catalog();
+        for ($number = 1; $number <= 11; $number++) {
+            $item = $this->listing($seller, $server, sprintf('아이템%02d', $number), 1000 + $number);
+            $item->forceFill(['created_at' => sprintf('2026-01-%02d 00:00:00', $number)])->save();
+        }
+
+        $newest = [];
+        for ($number = 11; $number >= 2; $number--) {
+            $newest[] = sprintf('아이템%02d', $number);
+        }
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSeeInOrder($newest)
+            ->assertDontSee('아이템01')
+            ->assertSee('다음');
+
+        $this->get('/?page=2')
+            ->assertOk()
+            ->assertSee('아이템01')
+            ->assertDontSee('아이템11')
+            ->assertSee('이전');
+
+        $this->get('/?page=0')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
+        $this->get('/?page=abc')->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
+
+        $this->get('/?page=9')
+            ->assertOk()
+            ->assertDontSee('아이템01')
+            ->assertDontSee('아이템11')
+            ->assertDontSee('등록된 아이템이 없습니다.')
+            ->assertSee('?page=1', false);
+
+        $pageTwo = $this->get('/?'.http_build_query([
+            'q' => '아이템',
+            'sort' => 'price_asc',
+            'page' => 2,
+        ]));
+        $pageTwo->assertOk()->assertSee('아이템11')->assertDontSee('아이템01');
+        $pageTwo->assertSee('sort=price_asc', false);
+        $pageTwo->assertSee('q=%EC%95%84%EC%9D%B4%ED%85%9C', false);
+
+        $this->actingAs($seller)->get('/my/items')
+            ->assertOk()
+            ->assertSee('아이템01')
+            ->assertSee('아이템11')
+            ->assertDontSee('aria-label="페이지"', false);
+
+        $this->getJson('/api/v1/items?page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.item_name', '아이템01');
+    }
+
     public function test_register_logs_in_and_rejects_duplicate_username(): void
     {
         $this->post('/register', [

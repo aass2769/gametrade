@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 
 class ItemFilters
 {
+    public const PER_PAGE = 10;
+
     public const SORTS = [
         'latest' => '최신순',
         'price_asc' => '가격 낮은 순',

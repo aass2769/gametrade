@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateItemStatusRequest;
 use App\Models\Game;
 use App\Models\GameServer;
 use App\Models\Item;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,8 +21,8 @@ class ItemController extends Controller
     {
         $filters = ItemFilters::fromRequest($request);
         $items = $filters->error === null
-            ? $this->listings($filters)
-            : new Collection;
+            ? $this->listings($filters)->withQueryString()
+            : null;
 
         return view('items.index', [
             'games' => Game::query()->orderBy('id')->get(),
@@ -131,13 +132,13 @@ class ItemController extends Controller
         return view('items.mine', ['items' => $items]);
     }
 
-    private function listings(ItemFilters $filters): Collection
+    private function listings(ItemFilters $filters): LengthAwarePaginator
     {
         return Item::query()
             ->with(['server.game', 'seller'])
             ->filtered($filters->gameId, $filters->name)
             ->ordered($filters->sort)
-            ->get();
+            ->paginate(ItemFilters::PER_PAGE);
     }
 
     private function servers(): Collection

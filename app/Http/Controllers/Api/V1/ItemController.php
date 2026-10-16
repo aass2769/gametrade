@@ -26,7 +26,8 @@ class ItemController extends Controller
             ->with(['server.game', 'seller'])
             ->filtered($filters->gameId, $filters->name)
             ->ordered($filters->sort)
-            ->get();
+            ->paginate(ItemFilters::PER_PAGE)
+            ->withQueryString();
 
         return ItemResource::collection($items);
     }

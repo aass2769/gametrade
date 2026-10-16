@@ -12,10 +12,15 @@ class SampleDataSeeder extends Seeder
 {
     public function run(): void
     {
-        if (User::query()->exists()) {
-            return;
+        if (! User::query()->exists()) {
+            $this->seedOriginal();
         }
 
+        $this->seedMoreListings();
+    }
+
+    private function seedOriginal(): void
+    {
         $seller1 = User::query()->create([
             'username' => 'seller1',
             'password' => 'seller1234',
@@ -68,5 +73,51 @@ class SampleDataSeeder extends Seeder
             'description' => '판매자 seller2의 샘플입니다.',
             'status' => ItemStatus::OnSale,
         ]);
+    }
+
+    private function seedMoreListings(): void
+    {
+        if (User::query()->where('username', 'seller3')->exists()) {
+            return;
+        }
+
+        $serverIds = GameServer::query()->orderBy('id')->pluck('id');
+        if ($serverIds->isEmpty()) {
+            return;
+        }
+
+        $sellers = [];
+        for ($number = 3; $number <= 12; $number++) {
+            $sellers[] = User::query()->create([
+                'username' => 'seller'.$number,
+                'password' => 'seller1234',
+            ]);
+        }
+
+        $names = [
+            '붉은 열매', '푸른 가루', '은빛 단검', '구리 방패', '바람 깃털',
+            '이슬 구슬', '검은 잉크', '노란 꽃잎', '단단한 나무', '작은 열쇠',
+            '흰 천', '거친 가죽', '맑은 수정', '녹슨 못', '따뜻한 돌',
+            '얇은 실', '둥근 방울', '긴 창', '짧은 활', '빈 병',
+            '마른 약초', '빛바랜 지도', '작은 종', '굵은 밧줄', '유리 구슬',
+            '나무 단추', '철 조각', '부드러운 솜', '오래된 동전', '희미한 등불',
+        ];
+        $statuses = [ItemStatus::OnSale, ItemStatus::OnSale, ItemStatus::InProgress, ItemStatus::Completed];
+
+        foreach ($names as $index => $name) {
+            $seller = $sellers[$index % count($sellers)];
+            $item = $seller->items()->create([
+                'server_id' => $serverIds[$index % $serverIds->count()],
+                'item_name' => $name,
+                'price' => 1000 + ($index * 3700),
+                'quantity' => ($index % 20) + 1,
+                'description' => $index % 3 === 0 ? null : '샘플 판매 글입니다.',
+                'status' => $statuses[$index % count($statuses)],
+            ]);
+            $item->forceFill([
+                'created_at' => now()->subHours($index + 1),
+                'updated_at' => now()->subHours($index + 1),
+            ])->save();
+        }
     }
 }

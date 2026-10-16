@@ -154,3 +154,28 @@ dt { color: var(--muted); }
 dd { margin: 0; }
 
 .table-wrap { overflow-x: auto; }
+
+.pager {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.pager a, .pager span {
+    min-width: 2rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--ink);
+    background: #fff;
+}
+
+.pager [aria-current="page"] {
+    background: var(--brand);
+    color: #fff;
+    border-color: var(--brand);
+}
