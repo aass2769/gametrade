@@ -6,6 +6,28 @@
 
 Laravel에서 요청 처리, 폼 검증, 세션 인증, Eloquent, 작성자 권한, REST API를 한 프로젝트로 보여 준다. 화면은 Blade이고, 같은 규칙은 `/api/v1`에서 Sanctum 토큰으로 동작한다.
 
+## 화면
+
+### 전체 게임
+
+![전체 게임](docs/screenshots/01-games.jpg)
+
+### 게임별 아이템 목록
+
+![게임별 아이템 목록](docs/screenshots/02-listings.png)
+
+### 상품 상세
+
+![상품 상세](docs/screenshots/03-item-detail.png)
+
+### 내 판매 상품
+
+![내 판매 상품](docs/screenshots/04-my-items.png)
+
+### 아이템 등록
+
+![아이템 등록](docs/screenshots/05-create-item.png)
+
 ## 기술 스택
 
 이 환경에서 확인한 버전이다.
